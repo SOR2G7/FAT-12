@@ -5,7 +5,7 @@ int main() {
     FILE * in = fopen("test.img", "rb");
     unsigned int i, start_sector, length_sectors;
     
-    fseek(in, 446 , SEEK_SET); // Voy al inicio. Completar donde dice ...
+    fseek(in, 446 , SEEK_SET); // Voy al inicio.
     
     for(i=0; i<4; i++) { // Leo las entradas
         printf("Partition entry %d: First byte %02X\n", i, fgetc(in));
