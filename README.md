@@ -135,7 +135,7 @@ int main() {
 Para compilar y ejecutar este código utilizamos los comandos:
 
 ```sh
-    gcc read_mbr.c -o read mb
+    gcc read_mbr.c -o read_mbr
     ./read_mbr
 ```
 y podemos observar el resultado: 
@@ -209,12 +209,12 @@ Segun la siguiente tabla, el byte 0x01 indica que es una particion **FAT12 CHS**
 | 0xfb | Vmware File System            |
 | 0xfc | Vmware swap                   |
 
-- El tamaño en sectores de la particion (Indicado en los bytes en rojo) es FF 07, es decir 2047 [^2]. 
+- El tamaño en sectores de la particion (Indicado en los bytes en rojo) es FF 07, es decir 2047[^2]. 
 
 
 [^1]: Notemos que por la notación Big Endian, encontrar el Signature Value **0xAA55** equivale a identificar en el editor hexadecimal los caracteres de forma invertida (Ya que está expresado bajo la notación Little-Endian), es decir **55 AA**.
 
-[^2] Este valor se obtiene expresando los bytes como un entero sin signo de 16 bits, teniendo en consideración que están bajo el orden Little-Endian.
+[^2]: Este valor se obtiene expresando los bytes como un entero sin signo de 16 bits, teniendo en consideración que están bajo el orden Little-Endian.
 
 ### Mostrando la información del MBR desde C
 
