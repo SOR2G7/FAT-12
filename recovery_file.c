@@ -75,7 +75,7 @@ char *read_file(unsigned short firstCluster, unsigned short fileFirstCluster, un
 
 void file_recovery(Fat12Entry *entry, unsigned short firstCluster, int clusterSize, long int lugar_actual) {
 
-	unsigned char charToReplace[] = {'R'};
+	unsigned char charToReplace[] = {'R'}; //Reemplazaremos el primer char del archivo borrado por R de Recovered
 	FILE * in = fopen("test.img", "rb+");
 	
     if (entry->filename[0] == 0x00) {
@@ -83,38 +83,23 @@ void file_recovery(Fat12Entry *entry, unsigned short firstCluster, int clusterSi
         return;
     }
     
-    // Verificar si es un archivo regular (no es directorio ni volumen)
+    // Verificar si el archivo borrado no estaba vacío
     if (entry->filename[0] == 0xE5 && entry->cluster_lowbytes_address!=0) {
         // Recuperar el nombre del archivo
         
         char *contenido = read_file(firstCluster, entry->cluster_lowbytes_address, clusterSize, entry->size_of_file);
-        
-        printf("%s \n",contenido);
-        
+                
         fseek(in, lugar_actual, SEEK_SET);
         fwrite(charToReplace, sizeof(entry->filename[0]), 1, in);
         
-        printf("asdasd");
+        printf("Archivo recuperado: [%.8s%.3s]",  entry->filename, entry->ext);
+        printf(" , cuyo contenido es:\n%s", contenido);
         
         // Recuperar el tamaño del archivo
         unsigned int fileSize = entry->size_of_file;
         
-        // Recuperar los clusters del archivo
-        unsigned short cluster = entry->cluster_lowbytes_address;
-        unsigned int fileOffset = (cluster - 2) * clusterSize + firstCluster;
-        
-        // Aquí puedes escribir el código para escribir los datos del archivo en otro archivo
-        // Por ejemplo, abrir un nuevo archivo y escribir los datos recuperados.
-        
-        /*printf("Archivo recuperado: %s, Tamaño: %u bytes\n", filename, fileSize);
-        printf("Datos recuperados desde el cluster: %d\n", cluster);
-        printf("Offset del archivo en la imagen: %d\n", fileOffset);*/
-        
-        // Puedes agregar aquí la lógica para escribir los datos recuperados en un nuevo archivo.
-        
+                
     }
-    // Si es un directorio, podrías llamar recursivamente a esta función para recuperar los archivos dentro de él.
-    // Podrías hacerlo verificando el atributo de entrada de directorio (entry->attributes[0] & 0x10).
 }
 
 int main() {
