@@ -53,7 +53,7 @@ typedef struct {
 
 void print_file_info(Fat12Entry *entry){
     unsigned char firstChar = entry->filename[0];
-    if (firstChar == 0xE5) {
+    if (firstChar == 0xE5 && entry->attributes[0] == ' ') {
         printf("Archivo borrado: [?%.7s.%.3s]\n", &entry->filename[1], entry->ext);
         return;
     } else if (firstChar == 0x05) {
