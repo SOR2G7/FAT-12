@@ -40,7 +40,13 @@ _Universidad Nacional General Sarmiento_
   - [Mostrando los archivos del fileSystem desde C](#mostrando-los-archivos-del-filesystem-desde-c)
   - [Primeras conclusiones](#primeras-conclusiones)
 - [Leyendo Archivos](#leyendo-los-archivos)
-  - Inicializacion 
+  - [Creando archivo lapapa.txt](#preparando-lo-necesario)
+  - [Mostrando el contenido del archivo](#mostrando-el-contenido-del-archivo)
+  - [Eliminando y recuperando el contenido del archivo](#recuperando-el-archivo) 
+- [Notas al pie](#notas-al-pie)
+- [Bibliografía](#bibliografía)
+
+---
 
 
 ## Introduccion
@@ -167,7 +173,7 @@ Con la información que nos proporciona esta tabla, podemos segmentar los 15 byt
 ![Analisis detallado de la primer partición del MBR](./images/first_partition_details.png)
 
 #### OBSERVACIONES
-- El bootable flag (En azul) es 0x08, lo cual nos indica que es booteable, ya que de no serlo, el valor sería 0x00. <ins>_¿Puede ser que que sea 0x08 indica que es un Volumen? Y por eso podemos justificar que es booteable?_<ins>
+- El bootable flag (En azul) es 0x08, lo cual nos indica que es booteable, ya que de no serlo, el valor sería 0x00. <ins>
 - Los bytes en celeste y naranja, indican donde inicia y termina el Cylinder Head Sector respectivamente. 
 - El byte en amarillo, indica el tipo de partición. En este caso 0x01. 
 Segun la siguiente tabla, el byte 0x01 indica que es una particion **FAT12 CHS**:
@@ -215,11 +221,6 @@ Segun la siguiente tabla, el byte 0x01 indica que es una particion **FAT12 CHS**
 | 0xfc | Vmware swap                   |
 
 - El tamaño en sectores de la particion (Indicado en los bytes en rojo) es FF 07, es decir 2047[^2]. 
-
-
-[^1]: Notemos que por la notación Big Endian, encontrar el Signature Value **0xAA55** equivale a identificar en el editor hexadecimal los caracteres de forma invertida (Ya que está expresado bajo la notación Little-Endian), es decir **55 AA**.
-
-[^2]: Este valor se obtiene expresando los bytes como un entero sin signo de 16 bits, teniendo en consideración que están bajo el orden Little-Endian.
 
 ### Mostrando la información del MBR desde C
 
@@ -291,18 +292,7 @@ Con toda esta información, vamos a mencionar algunas particularidades de los ar
 
 Siguiendo la misma linea que con ejemplos anteriores, desarrollaremos un programa en C que imprima todos estos datos por consola. 
 
-Para ello, partimos del codigo provisto en el archivo `read_root.c` y haremos las modificaciones necesarias para imprimir cada uno de los archivos que se encuentran en el filesystem, incluyendo algunos datos de cada uno de ellos. <ins>_ **EXPLICAR QUE HACE UN POCO MEJOR** _<ins>
-
-Con estas modificaciones, este es el código resultante: 
-
-<ins>_ **QUE HACE ESTA PARTE DEL CODIGO DE PRINT FILE INFO?? ** _<ins>
-```
- else if (firstChar == 0x05) {
-        printf("Archivo que comienza con 0x05: [%c%.7s.%.3s]\n", 0xE5, &entry->filename[1], entry->ext);
-        return;
-```
-
-
+Para ello, partimos del codigo provisto en el archivo `read_root.c` y haremos las modificaciones necesarias para imprimir cada uno de los archivos que se encuentran en el filesystem, incluyendo algunos datos de cada uno de ellos.
 
 ```c
 #include <stdio.h>
@@ -429,7 +419,7 @@ int main() {
 
 Compilando y ejecutando este código utilizando los comandos:
 
-```sh
+```bash
     gcc read_root.c -o read_root
     ./read_root
 ```
@@ -622,3 +612,193 @@ int main() {
 }
 
 ```
+
+Si lo compilamos y ejecutamos mediante los comandos: 
+
+```bash
+gcc read_file.c -o read_file
+./read_file
+```
+
+Obtenemos la siguiente salida: 
+![Leyendo el contenido de los archivos](./images/read_file_lapapa.png)
+
+## Recuperando el archivo
+
+Para la recuperación del archivo, partimos de la base en ```read_file.c`` y lo modificamos para ajustarse a nuestro objetivo. En particular, debimos utilizar una fórmula para poder calcular, dado un archivo existente en el filesystem, su posición de offset exacta dentro de la unidad de imagen para que, en caso de que su tabla FAT comienze con 0xE5, reemplace ese primer caracter por una 'R' para recuperarlo. 
+
+De esta forma, obtuvimos el siguiente código:
+
+
+```c
+#include <stdio.h>
+#include <stdlib.h>
+
+typedef struct {
+    unsigned char first_byte;
+    unsigned char start_chs[3];
+    unsigned char partition_type;
+    unsigned char end_chs[3];
+    char starting_cluster[4];
+    char file_size[4];
+} __attribute((packed)) PartitionTable;
+
+typedef struct {
+    unsigned char jmp[3];
+    char oem[8];
+    unsigned short sector_size; // 2 bytes
+    unsigned char sectors_per_cluster; // 1 byte
+    unsigned short reserved_sectors; // 2 bytes
+    unsigned char number_of_fats; // 1 byte
+    unsigned short max_root_entries; // 2 bytes
+    unsigned short total_sectors; // 2 bytes
+    unsigned char media_descriptor; // 1 byte
+    unsigned short sectors_per_fat; // 2 bytes
+    unsigned short sectors_per_track; // 2 bytes
+    unsigned short number_of_heads; // 2 bytes
+    unsigned int hidden_sectors; // 4 bytes
+    unsigned int total_logical_sectors; // 4 bytes
+    unsigned char drive_number; // 1 byte
+    unsigned char reserved; // 1 byte
+    unsigned char boot_signature; // 1 byte
+    unsigned int volume_id; // 4 bytes
+    char volume_label[11];
+    char fs_type[8]; // Tipo en ASCII
+    char boot_code[448];
+    unsigned short boot_sector_signature; // 2 bytes
+} __attribute__((packed)) Fat12BootSector;
+
+
+typedef struct {
+    unsigned char filename[8];                  // Nombre del archivo
+    unsigned char ext[3];                       // Extensión del archivo
+    unsigned char attributes[1];                // Atributos del archivo
+    unsigned char reserved[2];                  // Reservado
+    unsigned char created_time[2];              // Hora de creación
+    unsigned char created_day[2];               // Fecha de creación
+    unsigned char accessed_day[2];              // Fecha de último acceso
+    unsigned char cluster_highbytes_address[2]; // Dirección de los bytes altos del clúster
+    unsigned char written_time[2];              // Hora de última escritura
+    unsigned char written_day[2];               // Fecha de última escritura
+    unsigned short cluster_lowbytes_address;    // Dirección de los bytes bajos del clúster
+    unsigned int size_of_file;                  // Tamaño del archivo
+} __attribute((packed)) Fat12Entry;
+
+char *read_file(unsigned short firstCluster, unsigned short fileFirstCluster, unsigned short clusterSize, int fileSize) {
+    FILE *in = fopen("test.img", "rb");
+    if (in == NULL) {
+        printf("Error: No se pudo abrir el archivo\n");
+        exit(1);
+    }
+
+    fseek(in, firstCluster + ((fileFirstCluster - 2) * clusterSize), SEEK_SET);
+    
+    char *to_read = malloc(fileSize);
+    if (to_read == NULL) {
+        printf("Error: No se pudo asignar memoria para leer el archivo\n");
+        fclose(in);
+        exit(1);
+    }
+    
+    fread(to_read, fileSize, 1, in);
+    
+    fclose(in);
+    return to_read;
+}
+
+void file_recovery(Fat12Entry *entry, unsigned short firstCluster, int clusterSize, long int lugar_actual) {
+
+	unsigned char charToReplace[] = {'R'}; //Reemplazaremos el primer char del archivo borrado por R de Recovered
+	FILE * in = fopen("test.img", "rb+");
+	
+    if (entry->filename[0] == 0x00) {
+        // Entrada de directorio vacía o eliminada, ignorar
+        return;
+    }
+    
+    // Verificar si el archivo borrado no estaba vacío
+    if (entry->filename[0] == 0xE5 && entry->cluster_lowbytes_address!=0) {
+        // Recuperar el nombre del archivo
+        
+        char *contenido = read_file(firstCluster, entry->cluster_lowbytes_address, clusterSize, entry->size_of_file);
+                
+        fseek(in, lugar_actual, SEEK_SET);
+        fwrite(charToReplace, sizeof(entry->filename[0]), 1, in);
+        
+        printf("Archivo recuperado: [%.8s%.3s]",  entry->filename, entry->ext);
+        printf(" , cuyo contenido es:\n%s", contenido);
+        
+        // Recuperar el tamaño del archivo
+        unsigned int fileSize = entry->size_of_file;
+        
+                
+    }
+}
+
+int main() {
+
+    FILE * in = fopen("test.img", "rwb");
+    int i;
+    PartitionTable pt[4];
+    Fat12BootSector bs;
+    Fat12Entry entry;
+    unsigned short firstCluster;
+    
+    fseek(in, 446, SEEK_SET); // ir al inicio de la tabla de particiones
+    fread(pt, sizeof(PartitionTable), 4, in); // leer tabla de particiones
+    
+    for(i=0; i<4; i++) {        
+        if(pt[i].partition_type == 1) {
+            break;
+        }
+    }
+    
+    if(i == 4) {
+        printf("No encontrado filesystem FAT12, saliendo...\n");
+        return -1;
+    }
+    
+    fseek(in, pt[i].start_chs[2]*512, SEEK_SET);
+    fread(&bs, sizeof(Fat12BootSector), 1, in); // leer boot sector
+   
+           
+    fseek(in, (bs.reserved_sectors-1 + bs.sectors_per_fat * bs.number_of_fats) *
+          bs.sector_size, SEEK_CUR);
+    
+    firstCluster = ftell(in) + (bs.max_root_entries * sizeof(entry));
+    
+    for(i=0; i<bs.max_root_entries; i++) {
+    	long int lugar= ftell(in);
+        //printf("%ld \n", lugar);
+    	fread(&entry, sizeof(entry), 1, in);
+    	file_recovery(&entry, firstCluster, bs.sector_size * bs.sectors_per_cluster, lugar);
+    	
+    }
+    
+    printf("\nLeido Root directory, ahora en 0x%lX\n", ftell(in));
+    fclose(in);
+    return 0;
+}
+```
+
+Observemos que al compilarlo y ejecutarlo, utilizando los comandos: 
+
+```bash
+gcc recovery_file.c -o recovery_file
+./recovery_file
+```
+
+Se recorren los archivos del directorio root del filesystem, y en caso de que haya alguno eliminado, se recupera y se imprime su contenido por pantalla. 
+
+Para poder mostrar el funcionamiento, vamos a eliminar el archivo _lapapa.txt_ cuyo contenido conocemos, y vamos a mostrarlo por consola:
+
+![Recuperando el archivo lapapa.txt](./images/recovery_file_lapapa.png)
+
+---
+## Notas al pie
+
+[^1]: Notemos que por la notación Big Endian, encontrar el Signature Value **0xAA55** equivale a identificar en el editor hexadecimal los caracteres de forma invertida (Ya que está expresado bajo la notación Little-Endian), es decir **55 AA**.
+
+[^2]: Este valor se obtiene expresando los bytes como un entero sin signo de 16 bits, teniendo en consideración que están bajo el orden Little-Endian.
+
+## Bibliografía
