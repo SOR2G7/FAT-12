@@ -73,33 +73,48 @@ char *read_file(unsigned short firstCluster, unsigned short fileFirstCluster, un
     return to_read;
 }
 
-void file_recovery(Fat12Entry *entry, unsigned short firstCluster, unsigned short clusterSize, int size_of_file) {
+void file_recovery(Fat12Entry *entry, unsigned short firstCluster, int clusterSize, long int lugar_actual) {
 
-    unsigned char firstChar = entry->filename[0];
-    if (firstChar != 0xE5) { 
+	unsigned char charToReplace[] = {'R'};
+	FILE * in = fopen("test.img", "rb+");
+	
+    if (entry->filename[0] == 0x00) {
+        // Entrada de directorio vacía o eliminada, ignorar
         return;
     }
     
-    char *contenido = read_file(firstCluster, entry->cluster_lowbytes_address, clusterSize, size_of_file);
-    
-    //ACA VA LA LÓGICA DE RECUPERAR EL ARCHIVO (ESTA ANDANDO MAL) LO RECUPERA CON UN INVALID ENCODER
-    
-    // Open a new file for writing
-    FILE *recovered_file = fopen(entry->filename, "wb");
-    if (recovered_file == NULL) {
-        printf("Error: No se pudo crear el archivo recuperado\n");
-        free(contenido);
-        return;
+    // Verificar si es un archivo regular (no es directorio ni volumen)
+    if (entry->filename[0] == 0xE5 && entry->cluster_lowbytes_address!=0) {
+        // Recuperar el nombre del archivo
+        
+        char *contenido = read_file(firstCluster, entry->cluster_lowbytes_address, clusterSize, entry->size_of_file);
+        
+        printf("%s \n",contenido);
+        
+        fseek(in, lugar_actual, SEEK_SET);
+        fwrite(charToReplace, sizeof(entry->filename[0]), 1, in);
+        
+        printf("asdasd");
+        
+        // Recuperar el tamaño del archivo
+        unsigned int fileSize = entry->size_of_file;
+        
+        // Recuperar los clusters del archivo
+        unsigned short cluster = entry->cluster_lowbytes_address;
+        unsigned int fileOffset = (cluster - 2) * clusterSize + firstCluster;
+        
+        // Aquí puedes escribir el código para escribir los datos del archivo en otro archivo
+        // Por ejemplo, abrir un nuevo archivo y escribir los datos recuperados.
+        
+        /*printf("Archivo recuperado: %s, Tamaño: %u bytes\n", filename, fileSize);
+        printf("Datos recuperados desde el cluster: %d\n", cluster);
+        printf("Offset del archivo en la imagen: %d\n", fileOffset);*/
+        
+        // Puedes agregar aquí la lógica para escribir los datos recuperados en un nuevo archivo.
+        
     }
-    
-    // Write the recovered content to the new file
-    fwrite(contenido, size_of_file, 1, recovered_file);
-    printf("El archivo fue recuperado");
-    // Close the file
-    fclose(recovered_file);
-    
-    
-    free(contenido); // Liberar la memoria asignada para el contenido del archivo
+    // Si es un directorio, podrías llamar recursivamente a esta función para recuperar los archivos dentro de él.
+    // Podrías hacerlo verificando el atributo de entrada de directorio (entry->attributes[0] & 0x10).
 }
 
 int main() {
@@ -135,8 +150,10 @@ int main() {
     firstCluster = ftell(in) + (bs.max_root_entries * sizeof(entry));
     
     for(i=0; i<bs.max_root_entries; i++) {
+    	long int lugar= ftell(in);
+        //printf("%ld \n", lugar);
     	fread(&entry, sizeof(entry), 1, in);
-    	file_recovery(&entry, firstCluster, bs.sector_size * bs.sectors_per_cluster, sizeof(entry));
+    	file_recovery(&entry, firstCluster, bs.sector_size * bs.sectors_per_cluster, lugar);
     	
     }
     
