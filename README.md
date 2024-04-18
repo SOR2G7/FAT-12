@@ -36,6 +36,11 @@ _Universidad Nacional General Sarmiento_
     - [Estructura de datos de una particion del MBR](#estructura-de-datos-de-una-partición-dentro-del-mbr)
     - [Tabla de tipos de particiones](#tabla-de-tipos-de-particiones)
 - [Exploración de la tabla de archivos](#exploración-de-la-tabla-de-archivos)
+  - [Formato de entradas](#formato-de-entradas-de-directorio)
+  - [Mostrando los archivos del fileSystem desde C](#mostrando-los-archivos-del-filesystem-desde-c)
+  - [Primeras conclusiones](#primeras-conclusiones)
+- [Leyendo Archivos](#leyendo-los-archivos)
+  - Inicializacion 
 
 
 ## Introduccion
@@ -91,7 +96,7 @@ Segun la información provista en la [estructura de datos del MBR](#estructura-d
 
 ![Observando las particiones del MBR en ghex](./images/Ghex_Particiones_MBR.png)
 
-Los bytes resaltado en amarillo (Del 446 al 461), se corresponden con la **primer partición del MBR**, y considerando que inicia con  80, podemos identificarla como una **partición activa**. 
+Los bytes resaltado en verde (Del 446 al 461), se corresponden con la **primer partición del MBR**, y considerando que inicia con  80, podemos identificarla como una **partición activa**. 
 
 Luego, todos los bytes siguientes hasta el Signature Value (Señalado en rojo) se encuentran en 00, con lo cual solamente existe una particion en test.img.
 
@@ -220,9 +225,84 @@ Segun la siguiente tabla, el byte 0x01 indica que es una particion **FAT12 CHS**
 
 Nuevamente, para poder ver la información mas facilmente desarrollaremos un programa en C que imprima todos estos datos por consola. 
 
-Para ello, partimos del codigo provisto en el archivo `read_boot.c` y haremos las modificaciones necesarias. (<ins> _**Falta explicar un poco mas el porque**_<ins>)
+Para ello, partimos del codigo provisto en el archivo `read_boot.c` y haremos las modificaciones necesarias para restringir la salida por consola a solamente la primer partición del MBR. 
 
 De esta forma, el código queda de la siguiente manera: 
+
+```c
+#include <stdio.h>
+#include <stdlib.h>
+
+int main() {
+    FILE * in = fopen("test.img", "rb");
+    unsigned int i, start_sector, length_sectors;
+    
+    fseek(in, 446 , SEEK_SET); // Voy al inicio.
+    
+    for(i=0; i<1; i++) { // Leo las entradas
+        printf("Partition entry %d:\n  Bootable flag: %02X\n", i, fgetc(in));
+        printf("  Comienzo de partición en CHS: %02X:%02X:%02X\n", fgetc(in), fgetc(in), fgetc(in));
+        printf("  Partition type 0x%02X\n", fgetc(in));
+        printf("  Fin de partición en CHS: %02X:%02X:%02X\n", fgetc(in), fgetc(in), fgetc(in));
+        
+        fread(&start_sector, 4, 1, in);
+        fread(&length_sectors, 4, 1, in);
+        printf("  Dirección LBA relativa: 0x%08X\n  Tamaño en sectores: %d\n", start_sector, length_sectors);
+    }
+    
+    fclose(in);
+    return 0;
+}
+```
+
+Si compilamos y ejecutamos este código utilizando los comandos:
+
+```sh
+    gcc read_first_partition.c -o read_first_partition
+    ./read_first_partition
+```
+podemos observar el resultado: 
+
+![Ejecucion de read_mbr.c](./images/read_first_partition.png)
+
+
+## Exploración de la tabla de archivos
+
+Comenzemos esta exploración listando los 5 archivos que podemos identificar: 
+
+![Mostrando los archivos con ghex ](./images/ghex_files.png)
+
+En la imagen se encuentran resaltados los bytes correspondientes a cada archivo con un mismo tono de color, donde los primeros 11 bytes destinados al nombre que lo identifica están en un tono mas oscuro y los bytes restantes que contienen la metadata del mismo en uno mas claro. 
+
+Para tener mas noción de que información nos brindan los bytes con la metadata, debemos tener en cuenta las siguientes tablas: 
+
+#### Formato de entradas de directorio
+![Formato de entradas de directorio](./images/directory_entry_format.png)
+ 
+Con toda esta información, vamos a mencionar algunas particularidades de los archivos: 
+
+* Notemos que el primer byte (Luego de los bytes que representan el nombre) del archivo **MI_DIR** (Bytes resaltados en tonos verdes) es **0x10**. Este byte representa el tipo de archivo, y si consideramos la tabla mostrada anteriormente, vemos que esto representa un **directorio**.
+
+* Los archivos **HOLA.TXT** (Bytes resaltados en tonos rojos), **PRUEBA.TXT** (Bytes resaltados en tonos naranjas) representan archivos propiamente dichos (Pues el byte que nos lo indica es **0x20**)
+
+* Los archivos **BORRADO.TXT** (Bytes resaltados en tonos amarillos) y **BORRAR.SWX** (Bytes resaltados en azules) también son archivos, con la particularidad de que el primer byte es **0xE5**, es decir ambos son archivos que fueron borrad (Segun la información provista en la tabla).
+
+### Mostrando los archivos del fileSystem desde C
+
+Siguiendo la misma linea que con ejemplos anteriores, desarrollaremos un programa en C que imprima todos estos datos por consola. 
+
+Para ello, partimos del codigo provisto en el archivo `read_root.c` y haremos las modificaciones necesarias para imprimir cada uno de los archivos que se encuentran en el filesystem, incluyendo algunos datos de cada uno de ellos. <ins>_ **EXPLICAR QUE HACE UN POCO MEJOR** _<ins>
+
+Con estas modificaciones, este es el código resultante: 
+
+<ins>_ **QUE HACE ESTA PARTE DEL CODIGO DE PRINT FILE INFO?? ** _<ins>
+```
+ else if (firstChar == 0x05) {
+        printf("Archivo que comienza con 0x05: [%c%.7s.%.3s]\n", 0xE5, &entry->filename[1], entry->ext);
+        return;
+```
+
+
 
 ```c
 #include <stdio.h>
@@ -233,112 +313,312 @@ typedef struct {
     unsigned char start_chs[3];
     unsigned char partition_type;
     unsigned char end_chs[3];
-    char start_sector[4];
-    char length_sectors[4];
-} __attribute__((packed)) PartitionTable;
+    char starting_cluster[4];
+    char file_size[4];
+} __attribute((packed)) PartitionTable;
 
 typedef struct {
     unsigned char jmp[3];
     char oem[8];
-    unsigned short sector_size; // 2 bytes
-    unsigned char sectors_per_cluster; // 1 byte
-    unsigned short reserved_sectors; // 2 bytes
-    unsigned char number_of_fats; // 1 byte
-    unsigned short max_root_entries; // 2 bytes
-    unsigned short total_sectors; // 2 bytes
-    unsigned char media_descriptor; // 1 byte
-    unsigned short sectors_per_fat; // 2 bytes
-    unsigned short sectors_per_track; // 2 bytes
-    unsigned short number_of_heads; // 2 bytes
-    unsigned int hidden_sectors; // 4 bytes
-    unsigned int total_logical_sectors; // 4 bytes
-    unsigned char drive_number; // 1 byte
-    unsigned char reserved; // 1 byte
-    unsigned char boot_signature; // 1 byte
-    unsigned int volume_id; // 4 bytes
+    unsigned short sector_size;
+    unsigned char sectors_per_cluster;
+    unsigned short reserved_sectors;
+    unsigned char number_of_fats;
+    unsigned short root_dir_entries;
+    unsigned short total_sectors_short; // if zero, later field is used
+    unsigned char media_descriptor;
+    unsigned short fat_size_sectors;
+    unsigned short sectors_per_track;
+    unsigned short number_of_heads;
+    unsigned int hidden_sectors;
+    unsigned int total_sectors_long;
+    unsigned char drive_number;
+    unsigned char current_head;
+    unsigned char boot_signature;
+    unsigned int volume_id;
     char volume_label[11];
-    char fs_type[8]; // Tipo en ASCII
+    char fs_type[8];
     char boot_code[448];
-    unsigned short boot_sector_signature; // 2 bytes
-} __attribute__((packed)) Fat12BootSector;
+    unsigned short boot_sector_signature;
+} __attribute((packed)) Fat12BootSector;
+
+typedef struct {
+    unsigned char filename[8];                  // Nombre del archivo
+    unsigned char ext[3];                       // Extensión del archivo
+    unsigned char attributes[1];                // Atributos del archivo
+    unsigned char reserved[2];                  // Reservado
+    unsigned char created_time[2];              // Hora de creación
+    unsigned char created_day[2];               // Fecha de creación
+    unsigned char accessed_day[2];              // Fecha de último acceso
+    unsigned char cluster_highbytes_address[2]; // Dirección de los bytes altos del clúster
+    unsigned char written_time[2];              // Hora de última escritura
+    unsigned char written_day[2];               // Fecha de última escritura
+    unsigned short cluster_lowbytes_address;    // Dirección de los bytes bajos del clúster
+    unsigned int size_of_file;                  // Tamaño del archivo
+} __attribute((packed)) Fat12Entry;
+
+
+void print_file_info(Fat12Entry *entry){
+    unsigned char firstChar = entry->filename[0];
+    if (firstChar == 0xE5 && entry->attributes[0] == ' ') {
+        printf("Archivo borrado: [?%.7s.%.3s]\n", &entry->filename[1], entry->ext);
+        return;
+    } else if (firstChar == 0x05) {
+        printf("Archivo que comienza con 0x05: [%c%.7s.%.3s]\n", 0xE5, &entry->filename[1], entry->ext);
+        return;
+    }
+
+    switch(entry->attributes[0]) {
+    case 0x10:
+        printf("Directory: [%.8s.%.3s]\n", entry->filename, entry->ext);
+        break;
+    case 0x20:
+    	printf("----------------------------------------------\n");
+        printf("File: [%.8s.%.3s]\n", entry->filename, entry->ext);
+        printf("Extension: %.3s\n", entry->ext);
+        printf("Cluster (alta dirección de bytes): 0x%02X%02X\n", entry->cluster_highbytes_address[1], entry->cluster_highbytes_address[0]);
+        printf("Cluster (baja dirección de bytes): 0x%02X%02X\n", entry->cluster_lowbytes_address >> 8, entry->cluster_lowbytes_address & 0xFF);
+        printf("Tamaño de archivo: %d bytes\n", entry->size_of_file);
+        printf("----------------------------------------------\n");
+        break;
+    }
+}
 
 int main() {
-    FILE *in = fopen("test.img", "rb");
+    FILE * in = fopen("test.img", "rb");
     int i;
     PartitionTable pt[4];
     Fat12BootSector bs;
-
-    fseek(in, 0x1BE, SEEK_SET); // Ir al inicio de la tabla de particiones
-    fread(pt, sizeof(PartitionTable), 4, in); // Leer entradas de la tabla de particiones
-
-    for (i = 0; i < 4; i++) {
-        printf("Tipo de partición: %d\n", pt[i].partition_type);
-        if (pt[i].partition_type == 1) {
-            printf("Encontrado sistema de archivos FAT12 en la partición %d\n", i);
+    Fat12Entry entry;
+   
+    fseek(in, 446, SEEK_SET); // ir al inicio de la tabla de particiones
+    fread(pt, sizeof(PartitionTable), 4, in); // leer tabla de particiones
+    
+    for(i=0; i<4; i++) {        
+        if(pt[i].partition_type == 1) {
+            printf("Encontrada particion FAT12 %d\n", i);
             break;
         }
     }
-
-    if (i == 4) {
-        printf("No se encontró un sistema de archivos FAT12, saliendo...\n");
+    
+    if(i == 4) {
+        printf("No encontrado filesystem FAT12, saliendo...\n");
         return -1;
     }
-
-    fseek(in, 0, SEEK_SET);
-    fread(&bs, sizeof(Fat12BootSector), 1, in);
-
-    printf("Código de salto: %02X:%02X:%02X\n", bs.jmp[0], bs.jmp[1], bs.jmp[2]);
-    printf("Código OEM: [%.8s]\n", bs.oem);
-    printf("Tamaño del sector: %d\n", bs.sector_size);
-    printf("Sectores por clúster: %d\n", bs.sectors_per_cluster);
-    printf("Sectores reservados: %d\n", bs.reserved_sectors);
-    printf("Número de FATs: %d\n", bs.number_of_fats);
-    printf("Entradas máximas en el directorio raíz: %d\n", bs.max_root_entries);
-    printf("Total de sectores: %d\n", bs.total_sectors);
-    printf("Descriptor de medios: %d\n", bs.media_descriptor);
-    printf("Sectores por FAT: %d\n", bs.sectors_per_fat);
-    printf("Sectores por pista: %d\n", bs.sectors_per_track);
-    printf("Número de cabezas: %d\n", bs.number_of_heads);
-    printf("Sectores ocultos: %d\n", bs.hidden_sectors);
-    printf("Sectores lógicos totales: %d\n", bs.total_logical_sectors);
-    printf("Número de unidad: %d\n", bs.drive_number);
-    printf("Reservado: %d\n", bs.reserved);
-    printf("Firma de arranque: %d\n", bs.boot_signature);
-    printf("ID del volumen: 0x%08X\n", bs.volume_id);
-    printf("Etiqueta del volumen: [%.11s]\n", bs.volume_label);
-    printf("Tipo de sistema de archivos: [%.8s]\n", bs.fs_type);
-    printf("Firma del sector de arranque: 0x%04X\n", bs.boot_sector_signature);
-
+    
+    fseek(in, pt[i].start_chs[2]*512, SEEK_SET);
+    fread(&bs, sizeof(Fat12BootSector), 1, in); // leer boot sector
+    
+    printf("En  0x%lX, sector size %d, FAT size %d sectors, %d FATs\n\n", 
+           ftell(in), bs.sector_size, bs.fat_size_sectors, bs.number_of_fats);
+           
+    fseek(in, (bs.reserved_sectors-1 + bs.fat_size_sectors * bs.number_of_fats) *
+          bs.sector_size, SEEK_CUR);
+    
+    printf("Root dir_entries %d \n", bs.root_dir_entries);
+    for(i=0; i<bs.root_dir_entries; i++) {
+        fread(&entry, sizeof(entry), 1, in);
+        print_file_info(&entry);
+    }
+    
+    printf("\nLeido Root directory, ahora en 0x%lX\n", ftell(in));
     fclose(in);
     return 0;
 }
 ```
 
-Si compilamos y ejecutamos este código utilizando los comandos:
+Compilando y ejecutando este código utilizando los comandos:
 
 ```sh
-    gcc read_boot.c -o read_boot
-    ./read_mbr
+    gcc read_root.c -o read_root
+    ./read_root
 ```
-y podemos observar el resultado: 
+podemos observar el resultado: 
 
-![Ejecucion de read_mbr.c](./images/read_boot.c.png)
+![Ejecución del codigo read_root](./images/filesystem_files_read_root.png)
 
+En esta imagen podemos ver listados los 4 archivos (Incluyendo los dos que están marcados como eliminados), además del directorio **MI_DIR**.
 
-## Exploración de la tabla de archivos
+### Creando archivos en Root
 
-Comenzemos esta exploración listando los 5 archivos que podemos identificar: 
+Para continuar con la exploración de la FAT, vamos a montar la unidad de imagen y crear un archivo dentro del directorio Root. 
 
-![Mostrando los archivos con ghex ](./images/ghex_files.png)
+Posteriormente, lo eliminaremos y mostraremos dicho archivo tanto por Ghex, como desde el código C desarrollado anteriormente: 
 
-En la imagen se encuentran resaltados los bytes correspondientes a cada archivo con un mismo tono de color, donde los primeros 11 bytes destinados al nombre que lo identifica están en un tono mas oscuro y los bytes restantes que contienen la metadata del mismo en uno mas claro. Para tener mas noción de que información nos brindan los bytes con la metadata, debemos tener en cuenta las siguientes tablas: 
+#### Montando el filesystem, y realizando operaciones con el archivo
 
-![Formato de entradas de directorio](./images/directory_entry_format.png)
+![Creando y eliminando el archivo en el filesystem](images/file_creation.png)
+
+#### Mostrandolo por ghex
+
+![Mostrando el archivo desde ghex](images/ghex_created_and_deleted_file.png)
+
+#### Mostrandolo desde C
+
+![Mostrando el archivo desde C](images/read_root_created_and_deleted_file_.png)
+
+### Primeras conclusiones
+
+Para encontrar el archivo eliminado, lo hicimos buscando el byte 0xE5, el cual sabemos (segun la tabla de [formato de las entradas](#formato-de-entradas-de-directorio)) nos indica si un archivo ha sido eliminado. 
+
+Además, podemos notar que a pesar de que los archivos se borren, mantienen sus entradas en el filesystem. Esto quiere decir que no se borran a nivel físico, sino que simplemente se marcan como espacio disponible para ser utilizado en caso de ser necesario. 
+Esto queda claramente en evidencia si hacemos dos observaciones: 
+
+* Por un lado, podemos observar que luego de haber eliminado el archivo, aún quedan bytes de su contenido o su metadata (En este caso particular, esto es debido a que no han sido sobreescritos por algun otro archivo). 
+
+* Por el otro, si comparamos el contenido inicial de ``test.img`` con el actual, vemos que el archivo EJ3b.txt que hemos creado (Y posteriormente eliminado) ocupo el lugar en el que antes estaba el archivo BORRADO.txt. Es decir, se sobreescribieron los datos de su entrada, debido a que al momento de eliminarlo, sus bytes se marcaron como espacio disponible.
+
+**_Teniendo en cuenta estas observaciones, podemos deducir que es posible recuperar un archivo eliminado si sus datos no han sido sobreescritos._**
+
+## Leyendo los archivos 
+
+### Preparando lo necesario
+Para realizar la siguiente exploracion, vamos a crear un archivo en el directorio root llamado _lapapa.txt_ con algun texto como contenido. 
+Para ello, montaremos la imagen del filesystem y utilizaremos el comando: 
+
+```bash 
+echo Contenido de ejemplo >> lapapa.txt 
+```
+
+![Creando lapapa.txt](./images/create_lapapa.png)
+
+De la misma forma que hicimos anteriormente, vamos a mostrarlo tanto desde ghex como desde el código en C: 
+
+![Mostrando lapapa.txt Desde ghex](./images/ghex_lapapa.png)
+
+![Mostrando lapapa.txt Desde C](./images/read_root_lapapa.png)
+
+### Mostrando el contenido del archivo
+
+Para mostrar el contenido del archivo, hemos desarrollado el siguiente codigo en C: 
+
+```c
+#include <stdio.h>
+#include <stdlib.h>
  
-Con toda esta información, vamos a mencionar algunas particularidades de los archivos: 
+typedef struct {
+    unsigned char first_byte;
+    unsigned char start_chs[3];
+    unsigned char partition_type;
+    unsigned char end_chs[3];
+    char start_sector[4];
+    unsigned int length_sectors;
+} __attribute((packed)) PartitionTable;
+ 
+typedef struct {
+    unsigned char jmp[3];
+    char oem[8];
+    unsigned short sector_size;
+    unsigned char sector_cluster;
+    unsigned short reserved_sectors;
+    unsigned char number_of_fats;
+    unsigned short root_dir_entries;
+    unsigned short sector_volumen;
+    unsigned char descriptor;
+    unsigned short fat_size_sectors;
+    unsigned short sector_track;
+    unsigned short headers;
+    unsigned int sector_hidden;
+    unsigned int sector_partition;
+    unsigned char physical_device;
+    unsigned char current_header;
+    unsigned char firm;
+    unsigned int volume_id;
+    char volume_label[11];
+    char fs_type[8];
+    char boot_code[448];
+    unsigned short boot_sector_signature;
+} __attribute((packed)) Fat12BootSector;
+ 
+typedef struct {
+    unsigned char filename[1];
+    unsigned char nombre[7];
+    unsigned char extension[3];
+    unsigned char attributes[1];
+    unsigned char reserved;
+    unsigned char created_time_seconds;
+    unsigned char created_time_hours_minutes_seconds[2];
+    unsigned char created_day[2];
+    unsigned char accessed_day[2];
+    unsigned char cluster_highbytes_address[2];
+    unsigned char written_time[2];
+    unsigned char written_day[2];
+    unsigned short cluster_lowbytes_address;
+    unsigned int size_of_file;
+} __attribute((packed)) Fat12Entry;
+ 
+void print_file_info(Fat12Entry *entry, unsigned short firstCluster, unsigned short clusterSize) {
+    switch(entry->filename[0]) {
+    case 0x00:
+        return; // unused entry
+    case 0xE5:
+        return;
+    default:
+        switch(entry->attributes[0]) {
+            case 0x20:
+            	
+                printf("\n Archivo: [%.1s%.7s.%.3s]\n",  entry->filename, entry->nombre, entry->extension);
+                read_file(firstCluster, entry->cluster_lowbytes_address, clusterSize, entry->size_of_file);
+                return;
+        }
+    }    
+}
+ 
+void read_file(unsigned short firstCluster, unsigned short fileFirstCluster, unsigned short clusterSize, int fileSize){
+    FILE * in = fopen("test.img", "rb");
+    int i;
+    char to_read[fileSize];
+ 
+    fseek(in, firstCluster + ((fileFirstCluster - 2) * clusterSize) , SEEK_SET);
+    fread(to_read, fileSize, 1, in);
+    
+    printf("\n");
+ 
+    for(i=0; i<fileSize; i++) {
+            printf("%c", to_read[i]);
+    }
+    
+    printf("\n\n ----------------- \n");
+ 
+    fclose(in);
+}
+ 
+int main() {
+    FILE * in = fopen("test.img", "rb");
+    int i;
+    PartitionTable pt[4];
+    Fat12BootSector bs;
+    Fat12Entry entry;
+    unsigned short firstCluster;
+ 
+    fseek(in, 0x1BE, SEEK_SET); 
+    fread(pt, sizeof(PartitionTable), 4, in);
+ 
+    for(i=0; i<4; i++) {        
+        if(pt[i].partition_type == 1) {
+            break;
+        }
+    }
+ 
+    if(i == 4) {
+        printf("No encontrado filesystem FAT12, saliendo...\n");
+        return -1;
+    }
+ 
+    fseek(in, 0, SEEK_SET);
+    fread(&bs, sizeof(Fat12BootSector), 1, in);
+ 
+    fseek(in, (bs.reserved_sectors-1 + bs.fat_size_sectors * bs.number_of_fats) *
+          bs.sector_size, SEEK_CUR);
+ 
+    firstCluster = ftell(in) + (bs.root_dir_entries * sizeof(entry));
 
-* Notemos que el primer byte (Luego de los bytes que representan el nombre) del archivo **MI_DIR** (Bytes resaltados en Verde) es **0x10**. Este byte representa el tipo de archivo, y si consideramos la tabla mostrada anteriormente, vemos que esto representa un **directorio**.
+    for(i=0; i<bs.root_dir_entries; i++) {
+        fread(&entry, sizeof(entry), 1, in);
+        print_file_info(&entry, firstCluster, bs.sector_size * bs.sector_cluster);
+    }
+    fclose(in);
+    return 0;
+}
 
-* Los archivos **HOLA.TXT** (Bytes resaltados en rojo), **PRUEBA.TXT** (Bytes resaltados en naranja) representan archivos propiamente dichos (Pues el byte que nos lo indica es **0x20**)
-
-* Los archivos **BORRADO.TXT** () y **BORRAR.SWX** también son archivos, con la particularidad de que el primer byte es **0xE5**, es decir ambos son archivos que fueron borrados (Solamente a nivel lógico).
+```
