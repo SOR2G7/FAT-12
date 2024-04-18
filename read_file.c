@@ -61,7 +61,8 @@ void print_file_info(Fat12Entry *entry, unsigned short firstCluster, unsigned sh
     default:
         switch(entry->attributes[0]) {
             case 0x20:
-                printf("Archivo: [%.1s%.7s.%.3s]\n",  entry->filename, entry->nombre, entry->extension);
+            	
+                printf("\n Archivo: [%.1s%.7s.%.3s]\n",  entry->filename, entry->nombre, entry->extension);
                 read_file(firstCluster, entry->cluster_lowbytes_address, clusterSize, entry->size_of_file);
                 return;
         }
@@ -75,10 +76,14 @@ void read_file(unsigned short firstCluster, unsigned short fileFirstCluster, uns
  
     fseek(in, firstCluster + ((fileFirstCluster - 2) * clusterSize) , SEEK_SET);
     fread(to_read, fileSize, 1, in);
+    
+    printf("\n");
  
     for(i=0; i<fileSize; i++) {
             printf("%c", to_read[i]);
     }
+    
+    printf("\n\n ----------------- \n");
  
     fclose(in);
 }
