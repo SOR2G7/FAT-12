@@ -57,7 +57,7 @@ void print_file_info(Fat12Entry *entry){
         printf("Archivo borrado: [?%.7s.%.3s]\n", &entry->filename[1], entry->ext);
         return;
     } else if (firstChar == 0x05) {
-        printf("Archivo que comienza con 0xE5: [%c%.7s.%.3s]\n", 0xE5, &entry->filename[1], entry->ext);
+        printf("Archivo que comienza con 0x05: [%c%.7s.%.3s]\n", 0xE5, &entry->filename[1], entry->ext);
         return;
     }
 
