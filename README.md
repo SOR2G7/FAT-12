@@ -102,7 +102,7 @@ Segun la información provista en la [estructura de datos del MBR](#estructura-d
 
 ![Observando las particiones del MBR en ghex](./images/Ghex_Particiones_MBR.png)
 
-Los bytes resaltado en verde (Del 446 al 461), se corresponden con la **primer partición del MBR**, y considerando que inicia con  80, podemos identificarla como una **partición activa**. 
+Los bytes resaltado en verde (Del 446 al 461), se corresponden con la **primer partición del MBR**, y considerando que inicia con 80, podemos identificarla como una **partición activa**. 
 
 Luego, todos los bytes siguientes hasta el Signature Value (Señalado en rojo) se encuentran en 00, con lo cual solamente existe una particion en test.img.
 
@@ -173,7 +173,7 @@ Con la información que nos proporciona esta tabla, podemos segmentar los 15 byt
 ![Analisis detallado de la primer partición del MBR](./images/first_partition_details.png)
 
 #### OBSERVACIONES
-- El bootable flag (En azul) es 0x08, lo cual nos indica que es booteable, ya que de no serlo, el valor sería 0x00. <ins>
+- El bootable flag (En azul) es 0x80, lo cual nos indica que es booteable, ya que de no serlo, el valor sería 0x00. <ins>
 - Los bytes en celeste y naranja, indican donde inicia y termina el Cylinder Head Sector respectivamente. 
 - El byte en amarillo, indica el tipo de partición. En este caso 0x01. 
 Segun la siguiente tabla, el byte 0x01 indica que es una particion **FAT12 CHS**:
@@ -286,7 +286,7 @@ Con toda esta información, vamos a mencionar algunas particularidades de los ar
 
 * Los archivos **HOLA.TXT** (Bytes resaltados en tonos rojos), **PRUEBA.TXT** (Bytes resaltados en tonos naranjas) representan archivos propiamente dichos (Pues el byte que nos lo indica es **0x20**)
 
-* Los archivos **BORRADO.TXT** (Bytes resaltados en tonos amarillos) y **BORRAR.SWX** (Bytes resaltados en azules) también son archivos, con la particularidad de que el primer byte es **0xE5**, es decir ambos son archivos que fueron borrad (Segun la información provista en la tabla).
+* Los archivos **BORRADO.TXT** (Bytes resaltados en tonos amarillos) y **BORRAR.SWX** (Bytes resaltados en azules) también son archivos, con la particularidad de que el primer byte es **0xE5**, es decir ambos son archivos que fueron borrados (Segun la información provista en la tabla).
 
 ### Mostrando los archivos del fileSystem desde C
 
@@ -625,7 +625,7 @@ Obtenemos la siguiente salida:
 
 ## Recuperando el archivo
 
-Para la recuperación del archivo, partimos de la base en ```read_file.c`` y lo modificamos para ajustarse a nuestro objetivo. En particular, debimos utilizar una fórmula para poder calcular, dado un archivo existente en el filesystem, su posición de offset exacta dentro de la unidad de imagen para que, en caso de que su tabla FAT comienze con 0xE5, reemplace ese primer caracter por una 'R' para recuperarlo. 
+Para la recuperación del archivo, partimos de la base en ```read_file.c`` y lo modificamos para ajustarse a nuestro objetivo. En particular, debimos utilizar una fórmula para poder calcular, dado un archivo existente en el filesystem, su posición de offset exacta dentro de la unidad de imagen para que, en caso de que su tabla FAT comienze con 0xE5, reemplaze ese primer caracter por una 'R' para recuperarlo. 
 
 De esta forma, obtuvimos el siguiente código:
 
@@ -794,11 +794,12 @@ Para poder mostrar el funcionamiento, vamos a eliminar el archivo _lapapa.txt_ c
 
 ![Recuperando el archivo lapapa.txt](./images/recovery_file_lapapa.png)
 
----
-## Notas al pie
+## Bibliografía
+- http://www.c-jump.com/CIS24/Slides/FileSysDataStructs/FileSysDataStructs.html#D01_0110_fat_file_and_director
+- https://en.wikipedia.org/wiki/Design_of_the_FAT_file_system
+- https://stackoverflow.com/questions/51609548/fat12-file-data-region-offset
+
 
 [^1]: Notemos que por la notación Big Endian, encontrar el Signature Value **0xAA55** equivale a identificar en el editor hexadecimal los caracteres de forma invertida (Ya que está expresado bajo la notación Little-Endian), es decir **55 AA**.
 
 [^2]: Este valor se obtiene expresando los bytes como un entero sin signo de 16 bits, teniendo en consideración que están bajo el orden Little-Endian.
-
-## Bibliografía
